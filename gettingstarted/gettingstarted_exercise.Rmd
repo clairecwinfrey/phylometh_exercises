@@ -1,0 +1,1 @@
+trying to make a new file (gettingstarted_exercise.Rmd) that is in a folder (getting started) in my project, phylometh_exercises
