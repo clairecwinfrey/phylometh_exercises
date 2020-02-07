@@ -4,27 +4,67 @@ author: "Claire C Winfrey"
 date: "2/6/2020"
 output: html_document
 ---
-a line! kbnakd
-```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+
+```{r}
+set.seed(100)
+devtools::install_github("bomeara/phybase")
+
+#Getting a tree from Beaulieu et al., stored in Open Tree of Life 
+library(rotl)
+library(ape)
+phy <- get_study_tree("ot_485", "tree1")
+plot(phy, cex=0.3)
+
 ```
 
-## R Markdown
 
-This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
 
-When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
-
-```{r cars}
-summary(cars)
+```{r}
+#Drop some random taxa to simplify tree
+library(geiger)
+phy <- drop.random(phy, Ntip(phy) - 10)
+plot(phy)
+axisPhylo()
 ```
 
-## Including Plots
 
-You can also embed plots, for example:
 
-```{r pressure, echo=FALSE}
-plot(pressure)
+```{r}
+#Similulate gene trees on this tree
+library(phybase)
+gene.tree <- phybase::sim.coaltree.phylo(phy, pop.size=1e-12)
+plot(gene.tree)
+```
+```{r}
+library(phytools)
+plot(cophylo(phy, gene.tree, cbind(sort(phy$tip.label), sort(gene.tree$tip.label))))
+#this is treating the branches of the tree in coalescent time units, not millions of years (which was the initial tree branches above). But, the other way around (i.e. changing coalescent time units to years) would mean an even lower change of incongruence. Simulator doesn't do well with realistically long branch lengths!
+
+#Species tree is on left, gene tree is on right
+```
+```{r}
+#lengthening the tips of the species tree. This shows that mismatches aren't as clear when the tips are long, so deep gene tree species trees issues, which are maximized when there are quick radiations and large populations (e.g. less of a probability of coalescence).
+species.tree <- rcoal(7)
+species.tree$edge.length <- species.tree$edge.length / (10*max(branching.times(species.tree)))
+gene.tree <- phybase::sim.coaltree.phylo(species.tree)
+plot(cophylo(species.tree, gene.tree, cbind(sort(species.tree$tip.label), sort(gene.tree$tip.label))))
+```
+```{r}
+#Now, lengthening the tips of the species tree, and mismatch is hard to see
+tip.rows <- which(species.tree$edge[,2]<=Ntip(species.tree))
+species.tree2 <- species.tree
+species.tree2$edge.length[tip.rows] <- 100 + species.tree2$edge.length[tip.rows]
+gene.tree2 <- phybase::sim.coaltree.phylo(species.tree2)
+plot(cophylo(species.tree2, gene.tree2, cbind(sort(species.tree2$tip.label), sort(gene.tree2$tip.label))))
 ```
 
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+```{r}
+#Plotting the cladogram, by manually changing the branch lengths. This shows that the relevant divergences (e.g. how t3/t2 and t7/t4 no longer appear to be sister taxa in the gene tree. But they are still cousins!)
+#Relevant deep coalescence happened a long time ago!
+species.tree2.clado <- compute.brlen(species.tree2)
+gene.tree2.clado <- compute.brlen(gene.tree2)
+plot(cophylo(species.tree2.clado, gene.tree2.clado, cbind(sort(species.tree2.clado$tip.label),
+sort(gene.tree2.clado$tip.label))))
+```
+
+
