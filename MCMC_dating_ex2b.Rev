@@ -1,0 +1,69 @@
+#MCMC_dating_ex2b.Rev
+
+#RevBayes tutorials: Molecular dating
+#Exercise 2: The uncorrelated exponential relaxed clock model
+#MCMC_dating_ex2.Rev
+#February 25, 2020
+
+#This script is master Rev file that loads the data, the files specifying diff.
+#model components, and the monitors to record the output and the MCMC sampler.
+
+#Use molecular sequence data to estimate the relationships b/w extant species
+#of bears and infer relative speciation times assuming a global (i.e. a strict)
+#clock model.Our model assumes sub. rate is constant over time across our tree.
+#Rate of substitution is drawn from an exponential distribution.
+
+setwd("/Users/clairewinfrey/Desktop/Spring_2020/Phylometh_2020/RevBayes")
+
+cytb <-cytb <- readDiscreteCharacterData("tutorial_data/bears_cytb.nex")
+n_taxa <- cytb.size()
+taxa <- cytb.taxa()
+
+#Create workspace variables to contain all MCMC moves & monitors
+moves    = VectorMoves()
+monitors = VectorMonitors() #I think that this needs to stay same as in Ex. 1.
+
+#Setting up the MCMC
+#source is a function that lets you load commands and then Rev files into the
+#workspace.
+
+source("scripts/tree_BD.Rev") # BD tree prior
+source("scripts/clock_relaxed_exponential.Rev") # the relaxed exp. clock model
+source("scripts/sub_GTRG.Rev") # the GTR model
+
+#create workspace model variable. Mymodel object is a wrapper around entire model
+#graph and allows us to pass model to various functions we need for our MCMC.
+mymodel = model(sf)
+
+#Specify monitors and output file names. This monitor will all be numerical para-
+#meters that and will be written to tab-separated text file (can be opened by
+#accessory programs...e.g. Tracer?).
+
+#These two monitors.append changed from Ex. 1
+monitors.append( mnModel(filename="output/bears_relaxed_lognormal.log", printgen=10) )
+monitors.append( mnFile(filename="output/bears_relaxed_lognormal.trees", printgen=10, timetree) )
+
+#This monitor.append was left unchanged from Ex. 1
+#This final monitor prints information to the screen using mnScreen.
+#We'll go with age of living bears (extant_mrca) and the diversification rate.
+monitors.append( mnScreen(printgen=10, extant_mrca, diversification, branch_rates) )
+#I think that this one stays the same as Ex 1.
+
+#Now, we set up a separate workspace variable that defines our MCMC run. To do
+#this, we use mcmc function and provide as arguments the three main analysis
+#components (our model, our monitors, and our moves).
+
+mymcmc = mcmc(mymodel, monitors, moves, nruns=2, combine="mixed")
+
+#Here, we specify that our chain length is 20000 cycles.
+mymcmc.run(generations=20000, tuningInterval=200)
+
+trace = readTreeTrace("output/bears_relaxed_lognormal_run_1.trees")
+#The line above was also changed from the file "bears_relaxed_lognormal.trees"
+#because of the error: "Error while converting Newick tree. We expected an opening
+#parenthesis, but didn't get one." Parentheses are the same in new and replaced file
+#difference seems to be in how the Iteration	Replicates are named.
+
+mccTree(trace, file="output/bears_relaxed_lognormal.mcc.tre" )
+
+q()

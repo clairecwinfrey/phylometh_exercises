@@ -1,0 +1,38 @@
+##RevBayes tutorials: Molecular dating: Clock_global.Rev
+#Exercise 2: the uncorrelated exponential relaxed clock model
+#February 19, 2020
+
+#clock_relaxed_exponential.Rev
+
+#Unlike in Ex. 1, this model will use a relaxed mol. clock model, so that each
+#branch can have a varying rate of sequence evo.
+#So, here, each branch is ind. and identically distributed according to exponential
+#density with mean drawn from an exponential hyperprior dist.
+
+#Step 1: create a script for the relaxed clock model.
+
+#this defines mean branch rate as an exponential variable, and second line of
+#code specifies scale proposal move on the parameter.
+branch_rates_mean ~ dnExponential(10.0)
+moves.append( mvScale(branch_rates_mean, lambda=0.5, tune=true, weight=3.0) )
+
+#Now define number of branches in the tree (tree is rooted)
+n_branches <- 2 * n_taxa - 2
+
+#This for loop will define a rate for each branch (a vector of rates). Branch rates
+#are independent and identically distributed with a mean equal to branch_rates_mean.
+#Each rate has proposed scale proposal moves.
+for(i in 1:n_branches){
+    branch_rates[i] ~ dnExp(1/branch_rates_mean)
+    moves.append( mvScale(branch_rates[i], lambda=0.5, tune=true, weight=1.0) )
+}
+
+#These two more specific moves to help improve MCMC convergence
+moves.append( mvVectorScale(branch_rates, lambda=0.5, tune=true, weight=4.0) )
+moves.append( mvRateAgeBetaShift(tree=timetree, rates=branch_rates, tune=true, weight=n_taxa) )
+
+#Vector scale move proposes changes to all branch rates simultaneously
+##allows us to sample total branch rate independently of each individual rate
+#mvRateAgeBetaShift changes node ages and branch rates jointly, so that effective
+# branch length (product of branch time and rate) remains the same.
+#Thus, the move is proposing values with same likelihood but diff prior prob.

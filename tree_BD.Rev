@@ -1,0 +1,62 @@
+#RevBayes tutorials: Molecular dating
+#Exercise 1: the global molecular clock model
+#February 17, 2020
+
+#This script will contain all the parameters in our birth-death tree model,
+#which is used to describe the process that generated our tree.
+#B/c spp used are still living, our BD model will not incorporate fossil
+#recovery process.
+
+#Speciation rate is denoted by λ; Extinction rate is denoted by μ. Each assumed
+#to be drawn from ind. from a different exponential distribution.
+speciation_rate ~ dnExponential(10)
+extinction_rate ~ dnExponential(10)
+
+#We must sample value of both these parameters in proportion to post. prob.
+#mvScale proposes multiplicative changes to a parameter. Lambda is tuning value,
+#which determines the size pf the proposed change. Weight indicates how many
+#times you would like a given move to be performed at each MCMC cycle, a schedule
+#of moves!
+moves.append( mvScale(speciation_rate, lambda=0.5, tune=true, weight=3.0) )
+moves.append( mvScale(extinction_rate, lambda=0.5, tune=true, weight=3.0) )
+
+#Inferring diversification (lambda minus mu) and turnover (mu over lambda). By
+#creating deterministic nodes, we can monitor the values of these parameters.
+diversification := speciation_rate - extinction_rate
+turnover := extinction_rate/speciation_rate
+
+#probability that species are still living (here all extant) is a constant node.
+#Thus, as constant node, it needs no moves assigned to it.
+rho <- 1.0
+
+#To infer relative times, fixing root age to arbitrary value is good enough. Here,
+# the root is the most recent common ancestor of all living bears.
+extant_mrca <- 1.0
+
+#At this point, all parameters of BD model are specified.
+#Now, we'll use the BD parameters to define prior dist. on the tree topology
+#and divergence times.Using = below creates the distribution as a workspace
+#variable.
+tree_dist = dnBDP(lambda=speciation_rate, mu=extinction_rate, rho=rho,
+rootAge=extant_mrca, samplingStrategy="uniform", condition="nTaxa", taxa=taxa)
+
+#Now we will set priors to constrain parts of the tree topology based on prior info.
+#This is often necessary in cases where we incorporate fossil calibration info.
+#Below we make subfamily Ursinae monophyletic:
+clade_ursinae = clade("Melursus_ursinus", "Ursus_arctos", "Ursus_maritimus",
+"Helarctos_malayanus", "Ursus_americanus", "Ursus_thibetanus")
+constraints = v(clade_ursinae)
+
+#Specify the final constrained tree prior distribution. We provide the constraints
+#and the workspace birth-death distribution to the constrained topology dist.
+timetree ~ dnConstrainedTopology(tree_dist, constraints=constraints)
+
+#Add moves for the tree topology ((mvFNPR) and node ages (mvNodeTimeSlideUniform))
+#what is the benefit of setting the weight equal to the number of taxa?
+moves.append( mvNarrow(timetree, weight=n_taxa) )
+moves.append( mvFNPR(timetree, weight=n_taxa/4) )
+moves.append( mvNodeTimeSlideUniform(timetree, weight=n_taxa) )
+moves.append( mvSubtreeScale(timetree, weight=n_taxa/5.0) )
+
+#Let's record the age of a particular node, the Ursinae clade.
+age_ursinae := tmrca(timetree, clade_ursinae)

@@ -1,0 +1,91 @@
+#RevBayes tutorials: Molecular dating
+#Exercise 4
+#February 17, 2020
+
+tree_FBD.Rev
+
+#This script incorporates fossils into our tree!
+
+#Speciation rate is denoted by λ; Extinction rate is denoted by μ. Each assumed
+#to be drawn from ind. from a different exponential distribution.
+speciation_rate ~ dnExponential(10)
+extinction_rate ~ dnExponential(10)
+
+#We must sample value of both these parameters in proportion to post. prob.
+#mvScale proposes multiplicative changes to a parameter. Lambda is tuning value,
+#which determines the size pf the proposed change. Weight indicates how many
+#times you would like a given move to be performed at each MCMC cycle, a schedule
+#of moves!
+moves.append( mvScale(speciation_rate, lambda=0.5, tune=true, weight=3.0) )
+moves.append( mvScale(extinction_rate, lambda=0.5, tune=true, weight=3.0) )
+
+#Inferring diversification (lambda minus mu) and turnover (mu over lambda). By
+#creating deterministic nodes, we can monitor the values of these parameters.
+diversification := speciation_rate - extinction_rate
+turnover := extinction_rate/speciation_rate
+
+#probability that species are still living (here all extant) is a constant node.
+#Thus, as constant node, it needs no moves assigned to it.
+rho <- 1.0
+
+#Here, we will specify the fossil recovery rate and the moves on the fossil rate
+#parameter.
+psi ~ dnExponential(10)
+moves.append( mvScale(psi, lambda=0.5, tune=true, weight=3) )
+
+origin_time ~ dnUnif(37.2, 49.0)
+
+#this will sample origin_time within an interval (defined by half width delta),
+#this is not very intuitive, can be thought of as "nuisance parameter"
+moves.append( mvSlide(origin_time, delta=1.0, tune=true, weight=5.0) )
+
+#define prior dist. on the tree topology and divergence times using FBD range process model.
+tree_dist = dnFBDRP(lambda=speciation_rate, mu=extinction_rate, psi=psi, rho=rho, origin=origin_time, taxa=taxa)
+
+#Below we constrain subfamily Ursinae as monophyletic and we add Ursus_abstrusus
+#fossil to this constraint
+clade_ursinae = clade("Melursus_ursinus", "Ursus_arctos", "Ursus_maritimus",
+                  "Helarctos_malayanus", "Ursus_americanus", "Ursus_thibetanus", "Ursus_abstrusus")
+constraints = v(clade_ursinae)
+
+#Specify the final constrained tree prior distribution. We provide the constraints
+#and the workspace birth-death distribution to the constrained topology dist.
+timetree ~ dnConstrainedTopology(tree_dist, constraints=constraints)
+
+#new addition for Ex. 4, change a fossil that is a sampled ancestor to have its own
+#branch and vice versa.
+moves.append( mvCollapseExpandFossilBranch(timetree, origin_time, weight=6.0) )
+
+#another new addition for Ex. 4, explicitly sample the root age:
+moves.append( mvRootTimeSlideUniform(timetree, origin_time, weight=5.0) )
+
+#Retained 4 moves below from previous analysis. Is this correct?
+moves.append( mvNarrow(timetree, weight=n_taxa) )
+moves.append( mvFNPR(timetree, weight=n_taxa/4) )
+moves.append( mvNodeTimeSlideUniform(timetree, weight=n_taxa) )
+moves.append( mvSubtreeScale(timetree, weight=n_taxa/5.0) )
+
+#These additions from Ex4 define the root of the tree, which might not be monophyletic
+# b/c it was not included in the constrains that defined timetree. Extent_mrca
+#records age of MRCA of all extant bears.
+
+clade_extant = clade("Ailuropoda_melanoleuca","Tremarctos_ornatus","Melursus_ursinus",
+                    "Ursus_arctos","Ursus_maritimus","Helarctos_malayanus",
+                    "Ursus_americanus","Ursus_thibetanus")
+extant_mrca := tmrca(timetree, clade_extant)
+
+#Let's record the age of a particular node, the Ursinae clade.
+age_ursinae := tmrca(timetree, clade_ursinae) #Hashtag this out from previous Ex?
+
+#Keep track of number of sampled ancestors:
+num_samp_anc := timetree.numSampledAncestors()
+
+#Remove taxa for which we did not include any character data (i.e. the fossils)
+#and then monitor the tree. This is b/c these fossils have only time, no tutorial_data
+#with which we could resolve their phylo relationships to other lineages.
+extinct_sp = v("Agriarctos_spp", "Ailurarctos_lufengensis", "Ballusia_elmensis",
+				"Indarctos_arctoides", "Indarctos_punjabiensis", "Indarctos_vireti",
+				"Kretzoiarctos_beatrix", "Parictis_montanus", "Ursavus_brevirhinus",
+				"Ursavus_primaevus", "Ursus_abstrusus", "Zaragocyon_daamsi")
+
+pruned_tree := fnPruneTree(timetree, prune=extinct_sp)

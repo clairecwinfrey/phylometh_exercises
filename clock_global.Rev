@@ -1,0 +1,12 @@
+##RevBayes tutorials: Molecular dating: Clock_global.Rev
+#Exercise 1: the global molecular clock model
+#February 17, 2020
+
+#This script will specify the clock (or branch-rate) model that describes how
+#rates of substitution vary (or not) over the tree
+#In this tutorial, the rates do not change over time or across the tree.
+
+#Branch rates parameter has exponential prior, w/ rate parameter 10 (thus expected
+#value/mean of this distribution is 0.1)
+branch_rates ~ dnExponential(10.0)
+moves.append( mvScale(branch_rates, lambda=0.5, tune=true, weight=3.0) )

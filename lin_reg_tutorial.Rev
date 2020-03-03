@@ -1,0 +1,190 @@
+#RevBayes Tutorial 1 (https://revbayes.github.io/tutorials/intro/graph_models)
+#The code worked!!! Ran Feb 18, 2020!!
+
+#February 17, 2020
+
+#My_linear_regression
+
+##NOTES ON BAYESIAN LINEAR REGRESSION:
+#In our linear regression model, y=βx+α+ϵ. β, α, and ϵ are the free variables
+##we wish to estimate.
+
+#Priors (all considered uninformative priors)
+#Beta ~  Normal(mu = 0, sigma^2 =1)
+##Prior defining slope of regression is normally distributed
+
+#alpha ~ Normal(mu = 0, sigma^2 = 1)
+##prior for y-intercept is normally-distributed
+
+#sigmaundercase e (error term) ~ Exponential(λ = 1)
+## error term is a stochastic variable drawn from an exponential distribution,
+##where lambda is 1
+#For more context, lambda distribution is a particular case of the gamma dist
+##and is used in the analysis of Poisson point process
+
+#SPECIFYING THE MODEL IN REV
+#use specific assignment operator to specify the type of node (e.g. <- is
+##constant, := is deterministic, ~ is stochastic)
+
+#set working directory
+setwd("/Users/clairewinfrey/Desktop/Spring_2020/Phylometh_2020/RevBayes/tutorial_data")
+
+#Read in the observed data as constant nodes:
+x_obs <- readDataDelimitedFile(file="x.csv", header=FALSE, delimiter=",")[1]
+y_obs <- readDataDelimitedFile(file="y.csv", header=FALSE, delimiter=",")[1]
+
+#Look at x_obs
+x_obs
+
+#Specify the prior distributions for the stochastic nodes:
+beta ~ dnNormal(0, 1)
+alpha ~ dnNormal(0, 1)
+sigma ~ dnExponential(1)
+
+#For each observed value in x_obs, we will create a deterministic node for mu_y
+#and a stochastic node for y.
+for (i in 1:x_obs.size()) {
+   mu_y[i] := (beta * x_obs[i]) + alpha
+   y[i] ~ dnNormal(mu_y[i], sigma)
+}
+#This for loop will create the variable mu_y, and for each value of i, from one
+#to the length of the x_obs vector (50), it will create mu_y (which is a determin-
+##istic node that equals a random sampling of beta multiplied by the obs of x
+##in the ith place,  added to a random sampling of alpha.) The for loop also
+##creates the variable y, the number of which also corresponds to the length of
+##the x_obs vector, and is a stochastic node that is normally distributed with
+#a mean of mu_y and a sd of the sigma we assigned earlier.
+
+#Take a look at y. The code creates a vector of simulated values of y!Specif-
+#ically, the model we created generates y conditioned on the observed values of
+##x. We did not clamp observed values y_obs to the stochastic nodes y. Had we,
+#we could have performed parameter inference. Instead we simulated new values
+y
+y.size
+#y.size confirms that y is 50 characters long!
+
+#Now, we will estimate our linear regression parameters and clamp obs values to
+#stochastic node y.
+for (i in 1:x_obs.size()) {
+   mu_y[i] := (beta * x_obs[i]) + alpha
+   y[i] ~ dnNormal(mu_y[i], sigma)
+   y[i].clamp(y_obs[i])
+}
+
+#SETTING UP MCMC IN REV
+#we will use Metropolis-Hastings MCMC algorithm to perform parameter estimation
+
+#First, wrap entire model into a single variable. The = assignment operator
+#means that variable mymodel is not a part of the graphical model (not a stochas
+#tic, constant, or deterministic node!) It is a Rev workspace variable, aka a
+#utility variable that we use for any programming task that is not specifically
+#defining the model!
+mymodel = model(beta)
+#model has 261 nodes. Not sure why...
+#why is model beta?? NOt alpha or sigma, which we work with below for moves?
+
+#To sample different values of each variable, we must assign an MCMC move to
+#each variable. Each MCMC move will propose new values of each parameter. We
+#have three variables, so we will have three moves which we will save in a
+#vector called moves. mvSlide are slide moves, which proposes new values for
+#variable by "sliding" its value within a small window determined by delta
+#argument. Weight is average that each move will be performed on average once
+#per MCMC iteration.
+#So, could increase weight to make each "jump" cover more ground?
+moves[1] = mvSlide(beta, delta=0.001, weight=1)
+moves[2] = mvSlide(alpha, delta=0.001, weight=1)
+moves[3] = mvSlide(sigma, delta=0.001, weight=1)
+
+#Set up monitors. These sample values during MCMC. Two monitors will be saved
+#into a vector called monitors. mnsScreen prints out values onto the screen; mn
+#Model prints a log file. These are only two of monitors that RevBayes provides
+monitors[1] = mnScreen()
+monitors[2] = mnModel("output/linear_regression.log")
+
+#Now, pass the model, moves, and monitors into the mcmc function to finalize
+#our analysis. Run member method is used to run the MCMC for 10000 iterations.
+#Quit makes RevBayes automatically quit after the MCMC has finished running.
+mymcmc = mcmc(mymodel, moves, monitors)
+mymcmc.run(10000)
+quit()
+
+#IMPROVING MCMC MIXING
+
+#Can visualize the MCMC analysis in Tracer.
+#The output file of the MCMC analysis should be output/linear_regression.log
+#Fig 6 shows that the analysis never converged. I think we can tell because it
+#never plateaued on a value/hovered around a point (compare with Fig 6 with 7)
+# One way to fix this is by using a larger slider window (delta argument
+#in mvSlide) and by increasing weight of each move to 5.
+moves[1] = mvSlide(beta, delta=1, weight=5)
+moves[2] = mvSlide(alpha, delta=1, weight=5)
+moves[3] = mvSlide(sigma, delta=1, weight=5)
+
+#How to tell that model adequately converged? All parameter values have ESS
+#values over 200. But, where is ESS value in Fig7 left? & why "all parameters"?
+
+#PRIOR SENSITIVITY
+#Prior distributions are a way to mathematically formalize our prior knowledge.
+#For example, with a normal distribution, we might use a prior for sd of 0.1 if
+#we have prior information that the parameter's true value is close to zero.
+#Using a large sd (e.g. 10) is a highly uninformative prior. This density is
+diffuse and nearly uniform, so is appropriate if we have very little idea of
+#what the true value of the parameter is. So for normal model, how informative
+#or uninformative a prior is depends on the value you set for the sd (i.e.
+#how much around the mean the values can vary!)
+
+#Below, rerunning the linear regression exercise using highly informative priors
+#These priors were overly informative, and returned values far from the
+#true values.
+#But to run this, need to customize mymcmc script above.
+beta ~ dnNormal(0, 0.1)
+alpha ~ dnNormal(0, 0.1)
+
+
+#Rerun the analysis with highly uninformative priors:
+beta ~ dnNormal(0, 10.0)
+alpha ~ dnNormal(0, 10.0)
+
+#GENERATIVE VERSUS DISCRIMINATIVE MODELS
+
+#Probabilistic models can be understood as either discriminative or generative.
+
+#Discriminative (or conditional models) involve a response variable conditioned
+#on predictor variable. (What does conditioned on it mean?)
+#Model represents the conditional distribution, p(y|x) and so makes fewer
+##assumptions about the data; it is not necessary to specify p(x).
+#In such a model, the values of y conditioned on the observed value of x can be
+#simulated, but x cannot be simulated.
+
+#In phylogenetics, discriminative models are used when we condition over a
+#fixed tree (or set of trees), e.g.:
+#1) estimating divergence times over a fixed topology
+#2) estimating ancestral states on a fixed tree
+#3) estimating shifts in diversification rates over a fixed tree.
+
+GENERATIVE MODELS
+#generative models model the entire process used to generate the data.
+#They represent the joint distribution p(x,y) and they must make assumptions
+#about the data (we need to define p(x).
+##This allows us to compute 1) p(y|x), 2) p(x|y), and 3) simulate both x and y!
+##Overall, allows a richer representation of the relations between variables.
+
+#In phylogenetics, we use fully generative models when we:
+#1) jointly estimate divergence times and tree topology
+#2) jointly estimate ancestral states and the tree
+#3) jointly estimate shifting diversification rates and the tree
+
+A GENERATIVE LINEAR REGRESSION MODEL
+#ALLOWS us to learn something about x. Characteristics of a gen. lin. reg model:
+#1) simulate values of both x and y
+#2) both x and y will need to be clamped to the data
+#3) we need to specify a prior distribution for x.
+
+#There is an exercise that I could do, but I think that I'm going to try HW!
+#Reformulate our linear regression example so that it is a fully generative
+#model:
+
+#1. Draw the sticks-and-arrows diagram for a generative model and compare it to
+#the discriminative form. See the expandable box for one solution.
+#2 Code up the model in Rev and run MCMC. A solution is provided in
+#linear_regression_generative.Rev if you get stuck.

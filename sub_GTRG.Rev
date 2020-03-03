@@ -1,0 +1,55 @@
+##RevBayes tutorials: Molecular dating: sub_GTRG.Rev
+#Exercise 1: the global molecular clock model
+#February 17, 2020
+
+#This part of the exercise models how the sequences will evolve along the tree
+#and across sites. It uses a GTR plus gamma model.
+
+#From O'Meara, 2012:
+##model where the Q matrix has four rows and columns (one for each nucleotide)
+#and where rates are constrained such that the rate from state i to state j is
+#forced to be equal to the rate from state j to state i, for any i and j. This
+#explains why sf (stationary frequency has 4 elements (ATGC), and why er,
+#exchangability rates has 6 (A<->T, A<->G, A<->C, T <-G, T <->C, C <->G).
+
+sf_hp <- v(1,1,1,1)
+sf ~ dnDirichlet(sf_hp)
+
+er_hp <- v(1,1,1,1,1,1)
+er ~ dnDirichlet(er_hp)
+
+#mvSimplexElementScale move, which scales a single element of a simplex and
+# then renormalises the vector to sum to one. I think that this is important
+#Tutorial had mvSimplexBeta as command, but I think this was an error, so I changed
+#it to mvSimplexElementScale.
+#b/c Dirichlet dist is defined on interval from [0,1] (like beta dist.)
+
+moves.append( mvSimplexElementScale(er, alpha=10.0, weight=3.0) )
+moves.append( mvSimplexElementScale(sf, alpha=10.0, weight=2.0) )
+
+#Make Q-matrix as a deterministic node
+Q_cytb := fnGTR(er,sf)
+
+#This lets us model gamma-distributed rates across sites. Parameter alpha is the
+#shape of the gamma distribution.
+
+alpha_cytb ~ dnUniform(0.0,1E6)
+alpha_cytb.setValue( 1.0 )
+
+moves.append( mvScale(alpha_cytb, lambda=0.5, tune=true, weight=2.0) )
+
+#Model gamma distribution, which will be discretized into rate categories. Why
+#4 rate categories? #rates_cytb is a deterministic vector of rates
+#computed as the mean of each category.
+
+rates_cytb := fnDiscretizeGamma(alpha_cytb, alpha_cytb, 4)
+
+#Now create the phylogenetic Markov chain distribution for seq data. This includes
+#just made gamma-distributed site rate categories and branch rates defined in
+#clock model.
+#Value of the distribution is set equal to our observed data and identify it
+#as a static part of the likelihood using the clamp method
+
+phySeq ~ dnPhyloCTMC(tree=timetree, Q=Q_cytb, siteRates=rates_cytb,
+branchRates=branch_rates, type="DNA")
+phySeq.clamp(cytb)
